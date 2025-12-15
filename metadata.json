@@ -1,0 +1,5 @@
+{
+  "name": "今天吃什么 (What to Eat)",
+  "description": "A meal recommender that generates real recipes and images for breakfast, lunch, or dinner.",
+  "requestFramePermissions": []
+}
