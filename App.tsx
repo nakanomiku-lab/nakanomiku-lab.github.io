@@ -235,13 +235,18 @@ const App: React.FC = () => {
   const handleSelectFromResult = (recipe: Recipe) => {
     setLoadingMessage('正在准备菜品详情...');
     setAppState('LOADING');
+    
+    // FIX: Update selectedMeal to a neutral "Search Result" type
+    // This prevents showing stale meal types (like Lunch) when viewing a searched dish.
+    setSelectedMeal(MealType.SEARCH);
+
     setTimeout(() => {
         const dishes = prepareDishes([recipe]);
         setCurrentDishes(dishes);
         setIsGeneratedMeal(false); // Search results are not a "meal set", so disable slot replacement
         updateSeenDishes([recipe]);
         setAppState('RESULT');
-        addToHistory(MealType.LUNCH, dishes); 
+        addToHistory(MealType.SEARCH, dishes); 
     }, 500);
   };
 
@@ -365,6 +370,7 @@ const App: React.FC = () => {
                                         <span className={`text-xs font-bold px-2 py-1 rounded-full ${
                                             item.mealType === MealType.BREAKFAST ? 'bg-yellow-100 text-yellow-700' :
                                             item.mealType === MealType.LUNCH ? 'bg-green-100 text-green-700' :
+                                            item.mealType === MealType.SEARCH ? 'bg-orange-100 text-orange-700' :
                                             'bg-indigo-100 text-indigo-700'
                                         }`}>
                                             {item.mealType}

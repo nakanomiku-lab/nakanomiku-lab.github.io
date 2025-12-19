@@ -3,6 +3,7 @@ export enum MealType {
   BREAKFAST = '早餐',
   LUNCH = '午餐',
   DINNER = '晚餐',
+  SEARCH = '搜索推荐',
 }
 
 export interface Recipe {
