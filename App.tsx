@@ -22,7 +22,6 @@ const App: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState<string>('');
   
   // Track if the current meal is a standard generated meal (supports replacement) 
-  // or a search result/single item (does not support replacement slot logic)
   const [isGeneratedMeal, setIsGeneratedMeal] = useState(false);
 
   // Anti-repetition buffer: Stores the names of the last ~12 dishes shown
@@ -57,8 +56,6 @@ const App: React.FC = () => {
 
   const [replacingIndex, setReplacingIndex] = useState<number | null>(null);
   const [showHistory, setShowHistory] = useState(false);
-  
-  // Confirmation state for clearing history
   const [confirmClearHistory, setConfirmClearHistory] = useState(false);
 
   // Persistence Effects
@@ -78,18 +75,14 @@ const App: React.FC = () => {
     setSelectedMeal(meal);
     triggerHaptic();
     
-    // CRITICAL FIX: Clear search state when starting a normal meal generation flow
-    // This ensures the "Back" button in DishDisplay returns to SELECTION, not SEARCH
+    // 清除搜索相关状态，确保返回逻辑正确
     setSearchResults([]);
     setSearchQuery('');
 
-    // If Breakfast, skip config (usually 1 item)
     if (meal === MealType.BREAKFAST) {
         setAppState('LOADING');
-        // Do NOT clear seenDishes here to prevent repetition if user goes back and forth
         fetchDish(meal, preferences);
     } else {
-        // Show config for Lunch/Dinner
         setShowConfig(true);
     }
   };
@@ -115,11 +108,9 @@ const App: React.FC = () => {
       });
   };
 
-  // Helper to update the seen dishes buffer
   const updateSeenDishes = (newDishes: Recipe[]) => {
       setSeenDishes(prev => {
           const newNames = newDishes.map(d => d.dishName);
-          // Combine and keep only the last 12 items to ensure pool doesn't get exhausted but variety is maintained
           const combined = [...prev, ...newNames];
           return combined.slice(-12); 
       });
@@ -141,23 +132,19 @@ const App: React.FC = () => {
       }
       
       const prefsToUse = activePreferences || preferences;
-
-      // Use the accumulated seenDishes + any specific exclusions passed (like current dish)
       const allExclusions = Array.from(new Set([...seenDishes, ...excludedNames]));
 
-      // 1. Get recipes from AI or Local
       const recipes = await generateRecipe(meal, prefsToUse, config, allExclusions);
       
       if (recipes.length === 0) {
           throw new Error("No recipes generated");
       }
 
-      // 2. Prepare dishes with images
       const dishesWithImages = prepareDishes(recipes);
 
       setCurrentDishes(dishesWithImages);
-      setIsGeneratedMeal(true); // Mark as generated, enabling replacement logic
-      updateSeenDishes(recipes); // Add new results to buffer
+      setIsGeneratedMeal(true); 
+      updateSeenDishes(recipes);
       setAppState('RESULT');
       addToHistory(meal, dishesWithImages, config);
 
@@ -179,15 +166,11 @@ const App: React.FC = () => {
     });
   };
 
-  // Handle single dish replacement
   const handleReplaceSingleDish = async (index: number) => {
-     // Determine the correct category based on meal type and index
      let category: 'meat' | 'veg' | 'soup' | 'breakfast';
-     
      if (selectedMeal === MealType.BREAKFAST) {
          category = 'breakfast';
      } else {
-        // Logic for lunch/dinner specific slots
         if (index < mealConfig.meatCount) category = 'meat';
         else if (index < mealConfig.meatCount + mealConfig.vegCount) category = 'veg';
         else category = 'soup';
@@ -195,11 +178,8 @@ const App: React.FC = () => {
 
      try {
          setReplacingIndex(index); 
-         
-         // Fix: Pass current dishes AND history to single dish generator to avoid duplicates
          const currentNames = currentDishes.map(d => d.dishName);
          const allExclusions = Array.from(new Set([...seenDishes, ...currentNames]));
-
          const newRecipe = await generateSingleSideDish(category, preferences, allExclusions);
          
          if (!newRecipe) {
@@ -207,10 +187,8 @@ const App: React.FC = () => {
          }
 
          const newPreparedDish = prepareDishes([newRecipe])[0];
-         
          const updatedDishes = [...currentDishes];
          updatedDishes[index] = newPreparedDish;
-         
          updateSeenDishes([newRecipe]);
 
          setTimeout(() => {
@@ -226,6 +204,8 @@ const App: React.FC = () => {
   };
 
   const handleSearch = (query: string) => {
+    // 强制立即重置 mealType，确保在渲染搜索结果页之前，上下文已变为 SEARCH
+    setSelectedMeal(MealType.SEARCH);
     const results = searchRecipes(query);
     setSearchResults(results);
     setSearchQuery(query);
@@ -233,44 +213,46 @@ const App: React.FC = () => {
   };
 
   const handleSelectFromResult = (recipe: Recipe) => {
+    // 立即执行状态切换和类型重置
+    setSelectedMeal(MealType.SEARCH);
     setLoadingMessage('正在准备菜品详情...');
     setAppState('LOADING');
     
-    // FIX: Update selectedMeal to a neutral "Search Result" type
-    // This prevents showing stale meal types (like Lunch) when viewing a searched dish.
-    setSelectedMeal(MealType.SEARCH);
-
+    // 延迟是为了给 Loading 动画一个展示机会，并在此时再次确保 selectedMeal 的正确性
     setTimeout(() => {
+        setSelectedMeal(MealType.SEARCH); // 再次加固
         const dishes = prepareDishes([recipe]);
         setCurrentDishes(dishes);
-        setIsGeneratedMeal(false); // Search results are not a "meal set", so disable slot replacement
+        setIsGeneratedMeal(false); 
         updateSeenDishes([recipe]);
         setAppState('RESULT');
         addToHistory(MealType.SEARCH, dishes); 
-    }, 500);
+    }, 400);
   };
 
   const handleBack = () => {
     setAppState('SELECTION');
     setCurrentDishes([]);
     setSearchQuery(''); 
-    setSearchResults([]); // Also clear results to reset navigation state
+    setSearchResults([]); 
+    setSelectedMeal(MealType.LUNCH);
   };
 
   const handleRestart = () => {
     setAppState('SELECTION');
     setCurrentDishes([]);
-    setSeenDishes([]); // Clear history on hard restart
+    setSeenDishes([]); 
     setSearchQuery('');
     setSearchResults([]);
+    setSelectedMeal(MealType.LUNCH);
   }
 
   const handleBackToSearch = () => {
+    setSelectedMeal(MealType.SEARCH); 
     setAppState('SEARCH');
     setCurrentDishes([]);
   };
 
-  // Full Regenerate using current config
   const handleRegenerate = () => {
     setAppState('LOADING');
     const currentNames = currentDishes.map(d => d.dishName);
@@ -281,20 +263,16 @@ const App: React.FC = () => {
       setSelectedMeal(item.mealType);
       setCurrentDishes(item.dishes);
       if (item.config) setMealConfig(item.config);
-      // If it has a config, it was likely a generated meal. If not (search result), treat as non-generated.
       setIsGeneratedMeal(!!item.config || item.mealType === MealType.BREAKFAST); 
       setAppState('RESULT');
       setShowHistory(false);
       triggerHaptic();
   };
 
-  // Enhanced Clear History with 2-step confirmation
   const handleClearHistory = (e: React.MouseEvent) => {
-      e.stopPropagation(); // Prevent clicks from interacting with drawer backdrop
-      
+      e.stopPropagation(); 
       if (!confirmClearHistory) {
           setConfirmClearHistory(true);
-          // Auto-reset confirmation after 3 seconds
           setTimeout(() => setConfirmClearHistory(false), 3000);
       } else {
           setHistory([]);
@@ -310,7 +288,6 @@ const App: React.FC = () => {
       style={{ backgroundImage: 'url("https://www.transparenttextures.com/patterns/cubes.png")' }}
     >
       
-      {/* Config Modal */}
       {showConfig && (
           <MealConfigurator 
             mealType={selectedMeal} 
@@ -321,11 +298,10 @@ const App: React.FC = () => {
           />
       )}
 
-      {/* History Button */}
       <button 
         onClick={() => {
             setShowHistory(true);
-            setConfirmClearHistory(false); // Reset state when opening
+            setConfirmClearHistory(false);
         }}
         className="fixed top-6 right-6 z-40 bg-white p-3 rounded-full shadow-lg text-gray-600 hover:text-orange-600 hover:scale-110 transition-all"
         title="历史足迹"
@@ -333,7 +309,6 @@ const App: React.FC = () => {
           <Clock size={24} />
       </button>
 
-      {/* History Drawer */}
       {showHistory && (
           <div className="fixed inset-0 z-50 flex justify-end">
               <div 
@@ -341,7 +316,7 @@ const App: React.FC = () => {
                   onClick={() => setShowHistory(false)}
               ></div>
               
-              <div className="relative w-full max-w-sm bg-white h-full shadow-2xl p-6 overflow-y-auto animate-slideInRight flex flex-col">
+              <div className="relative w-full max-sm:w-full max-w-sm bg-white h-full shadow-2xl p-6 overflow-y-auto animate-slideInRight flex flex-col">
                   <div className="flex items-center justify-between mb-8 flex-shrink-0">
                       <h2 className="text-2xl font-bold text-gray-800 flex items-center">
                           <History className="mr-2 text-orange-500" />
@@ -417,7 +392,6 @@ const App: React.FC = () => {
           </div>
       )}
 
-      {/* Header */}
       <header className={`mb-8 text-center animate-slideDown transition-all ${appState !== 'SELECTION' ? 'scale-90' : ''}`}>
         <div 
             className="inline-flex items-center justify-center p-3 bg-orange-500 rounded-2xl shadow-lg mb-4 text-white rotate-3 cursor-pointer hover:rotate-6 transition-transform"
@@ -435,7 +409,6 @@ const App: React.FC = () => {
         )}
       </header>
 
-      {/* Main Content Area */}
       <main className="w-full flex flex-col items-center justify-start flex-1">
         
         {appState === 'SELECTION' && (
@@ -445,11 +418,9 @@ const App: React.FC = () => {
                 onSuggestionSelect={handleSelectFromResult}
                 initialValue=""
             />
-            
             <div className="mb-10 w-full flex justify-center">
                 <MealSelector onSelect={handleMealSelect} disabled={false} />
             </div>
-
             <PreferenceSelector 
                 onChange={handlePreferenceChange} 
                 preferences={preferences} 
@@ -481,16 +452,14 @@ const App: React.FC = () => {
           <DishDisplay 
             dish={currentDishes} 
             mealType={selectedMeal} 
-            // Fix: Check searchResults.length to determine back destination
             onBack={searchResults.length > 0 ? handleBackToSearch : handleBack}
             onRegenerate={handleRegenerate}
-            onReplaceDish={isGeneratedMeal ? handleReplaceSingleDish : undefined} // Only pass if generated
+            onReplaceDish={isGeneratedMeal ? handleReplaceSingleDish : undefined}
             replacingIndex={replacingIndex}
           />
         )}
       </main>
 
-      {/* Footer */}
       <footer className="mt-12 text-gray-400 text-sm pb-4">
         精选美味推荐
       </footer>

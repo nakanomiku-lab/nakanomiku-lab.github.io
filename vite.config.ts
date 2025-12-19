@@ -8,6 +8,12 @@ export default defineConfig({
   base: './',
   build: {
     outDir: 'dist',
-    sourcemap: false
+    sourcemap: false,
+    emptyOutDir: true, // 确保每次构建都清理输出目录
+    rollupOptions: {
+      output: {
+        manualChunks: undefined // 禁用代码分割，确保文件更新
+      }
+    }
   }
 });
